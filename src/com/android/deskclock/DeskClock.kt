@@ -16,11 +16,12 @@
 
 package com.android.deskclock
 
+import android.Manifest.permission.POST_NOTIFICATIONS
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.content.Intent
-import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.text.format.DateUtils
@@ -31,9 +32,13 @@ import android.view.View
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.appcompat.app.ActionBar
 import androidx.appcompat.widget.Toolbar
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.os.BuildCompat
 import androidx.fragment.app.Fragment
 import androidx.viewpager.widget.ViewPager
 import androidx.viewpager.widget.ViewPager.OnPageChangeListener
@@ -54,6 +59,7 @@ import com.android.deskclock.provider.Alarm
 import com.android.deskclock.uidata.TabListener
 import com.android.deskclock.uidata.UiDataModel
 import com.android.deskclock.widget.toast.SnackbarManager
+import com.android.deskclock.LogUtils
 
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayout
@@ -63,6 +69,8 @@ import com.google.android.material.tabs.TabLayout
  * clocks, timers and a stopwatch.
  */
 class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
+    private var RC_PERMISSION = 1;
+
     /** Models the interesting state of display the [.mFab] button may inhabit.  */
     private enum class FabState {
         SHOWING, HIDE_ARMED, HIDING
@@ -125,11 +133,6 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
     /** `true` when a settings change necessitates recreating this activity.  */
     private var mRecreateActivity = false
 
-    companion object {
-        private const val PERMISSION_POWER_OFF_ALARM = "org.codeaurora.permission.POWER_OFF_ALARM";
-        private const val CODE_FOR_ALARM_PERMISSION = 1;
-    }
-
     override fun onNewIntent(newIntent: Intent) {
         super.onNewIntent(newIntent)
 
@@ -139,6 +142,9 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
 
     protected override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (BuildCompat.isAtLeastT()) {
+            checkPermission(POST_NOTIFICATIONS)
+        }
 
         setContentView(R.layout.desk_clock)
         mSnackbarAnchor = findViewById(R.id.content)
@@ -412,15 +418,8 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
 
     private fun checkPermissions() {
         if (checkSelfPermission(PERMISSION_POWER_OFF_ALARM)
-                != PackageManager.PERMISSION_GRANTED) {
+                != PERMISSION_GRANTED) {
             requestPermissions(arrayOf<String>(PERMISSION_POWER_OFF_ALARM), CODE_FOR_ALARM_PERMISSION);
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-            requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
-        if (requestCode == CODE_FOR_ALARM_PERMISSION){
-            LogUtils.i("Power off alarm permission is granted.");
         }
     }
 
@@ -638,5 +637,44 @@ class DeskClock : BaseActivity(), FabContainer, AlarmLabelDialogHandler {
                 updateFab(FabContainer.FAB_AND_BUTTONS_IMMEDIATE)
             }
         }
+    }
+
+    private fun showToast(message : String) =
+        Toast.makeText(this@DeskClock, message, Toast.LENGTH_SHORT).show()
+
+    // Function to check and request permission.
+    private fun checkPermission(permission: String) {
+        if (ContextCompat.checkSelfPermission(this@DeskClock, permission) != PERMISSION_GRANTED) {
+            // Requesting the permission
+            LOGGER.d("POST_NOTIFICATIONS requesting permission.");
+            ActivityCompat.requestPermissions(this@DeskClock, arrayOf(permission), RC_PERMISSION)
+        } else {
+            LOGGER.d("POST_NOTIFICATIONS permission already granted.");
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        if (requestCode == CODE_FOR_ALARM_PERMISSION){
+            LogUtils.i("Power off alarm permission is granted.");
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            RC_PERMISSION -> if (grantResults.firstOrNull() == PERMISSION_GRANTED) {
+                LOGGER.d("POST_NOTIFICATIONS permission granted.");
+            } else {
+                LOGGER.d("POST_NOTIFICATIONS permission denied.");
+                showToast("POST_NOTIFICATIONS permission denied.");
+            }
+        }
+    }
+
+    companion object {
+        private val LOGGER = LogUtils.Logger("DeskClock")
+        private const val PERMISSION_POWER_OFF_ALARM = "org.codeaurora.permission.POWER_OFF_ALARM";
+        private const val CODE_FOR_ALARM_PERMISSION = 1;
     }
 }
